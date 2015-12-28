@@ -1,0 +1,93 @@
+diff --git a/libraries/tests/peripherals/MMA8451Q/MMA8451Q.cpp b/libraries/tests/peripherals/MMA8451Q/MMA8451Q.cpp
+index 9bdf87a..c0ee8de 100644
+--- a/libraries/tests/peripherals/MMA8451Q/MMA8451Q.cpp
++++ b/libraries/tests/peripherals/MMA8451Q/MMA8451Q.cpp
+@@ -23,6 +23,7 @@
+ #define REG_OUT_X_MSB     0x01
+ #define REG_OUT_Y_MSB     0x03
+ #define REG_OUT_Z_MSB     0x05
++#define XYZ_DATA_CFG      0x0E  // Added to support full-scale settings
+ 
+ #define UINT14_MAX        16383
+ 
+@@ -79,3 +80,31 @@ void MMA8451Q::readRegs(int addr, uint8_t * data, int len) {
+ void MMA8451Q::writeRegs(uint8_t * data, int len) {
+     m_i2c.write(m_addr, (char *)data, len);
+ }
++
++void MMA8451Q::setRange(int range) {
++    uint8_t data[2];
++
++    // Set the device to Standby Mode so registers can be updated
++    data[0]=REG_CTRL_REG_1;
++    data[1]=0x00;
++    writeRegs(data,2); // Write in the updated value to put the device in Standby Mode
++
++    // Set up default values for range setting
++    data[0] = XYZ_DATA_CFG;
++    data[1] = 0x00; // Default range +/-2G
++
++    // Check range parameter
++    if (range == 4) {           // +/-4G
++        data[1]=0x01;
++    } else if (range == 8) {    // +/-8G
++        data[1]=0x02;
++    }
++
++    // Write to the I2C registers
++    writeRegs(data,2);
++
++    // Set the device back to Active Mode
++    data[0]=REG_CTRL_REG_1;
++    data[1]=0x01;
++    writeRegs(data,2); // Write in the updated value to put the device in Active Mode
++}
+\ No newline at end of file
+diff --git a/libraries/tests/peripherals/MMA8451Q/MMA8451Q.h b/libraries/tests/peripherals/MMA8451Q/MMA8451Q.h
+index 1b22268..9c3bda7 100644
+--- a/libraries/tests/peripherals/MMA8451Q/MMA8451Q.h
++++ b/libraries/tests/peripherals/MMA8451Q/MMA8451Q.h
+@@ -96,6 +96,13 @@ public:
+    */
+   void getAccAllAxis(int16_t * res);
+ 
++  /**
++   * Set XYZ axis range (in G)
++   *
++   * @param range G range (+/- 2, 4 or 8)
++   */
++  void setRange(int range);
++
+ private:
+   I2C m_i2c;
+   int m_addr;
+diff --git a/workspace_tools/make.py b/workspace_tools/make.py
+index e4ade4c..1f647e4 100755
+--- a/workspace_tools/make.py
++++ b/workspace_tools/make.py
+@@ -232,6 +232,12 @@ if __name__ == '__main__':
+         if options.ublox:    test.dependencies.append(UBLOX_LIBRARY)
+         if options.testlib:  test.dependencies.append(TEST_MBED_LIB)
+ 
++        if test.peripherals is not None:
++          for peripheral in test.peripherals.split(','):
++            print "Adding peripheral:  " + peripheral 
++            print join(ROOT, "libraries", "tests", "peripherals", peripheral)
++            test.dependencies.append(join(ROOT, "libraries", "tests", "peripherals", peripheral))
++
+         build_dir = join(BUILD_DIR, "test", mcu, toolchain, test.id)
+         if options.source_dir is not None:
+             test.source_dir = options.source_dir
+diff --git a/workspace_tools/settings.py b/workspace_tools/settings.py
+index 9237624..a9aa40b 100644
+--- a/workspace_tools/settings.py
++++ b/workspace_tools/settings.py
+@@ -51,7 +51,7 @@ ARM_CPPLIB = join(ARM_LIB, "cpplib")
+ MY_ARM_CLIB = join(ARM_PATH, "lib", "microlib")
+ 
+ # GCC ARM
+-GCC_ARM_PATH = ""
++GCC_ARM_PATH = join(ROOT, "gcc-arm/bin")
+ 
+ # GCC CodeSourcery
+ GCC_CS_PATH = "C:/Program Files (x86)/CodeSourcery/Sourcery_CodeBench_Lite_for_ARM_EABI/bin"
